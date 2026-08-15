@@ -1,0 +1,30 @@
+# ==============================================================================
+# FXP - Forex Autonomous Trading Bot Dependencies
+# Python Version Compatibility: >= 3.11, < 3.13
+# ==============================================================================
+
+# Core Data Processing & DataFrames
+polars>=1.0.0
+
+# Numerical Computing & Advanced Mathematics
+numpy>=1.26.0
+
+# Quantitative Statistical Tests & Distributions (validation.py / evaluation.py)
+scipy>=1.12.0
+
+# OANDA v20 REST API Integration & HTTP Client
+oandapyV20>=0.7.2
+requests>=2.31.0
+urllib3>=2.2.0
+
+# Environment Variables & Configuration Engine (config.py)
+python-dotenv>=1.0.1
+pydantic>=2.6.0
+pydantic-settings>=2.2.0
+
+# System Monitoring & Telemetry
+psutil>=5.9.8
+
+# Testing & Quality Assurance (Optional Dev Dependencies)
+pytest>=8.0.0
+pytest-cov>=4.1.0
