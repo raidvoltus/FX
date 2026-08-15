@@ -1,0 +1,139 @@
+name: FXP Forex Autonomous Trading Engine Scheduler
+
+on:
+  schedule:
+    # 🕒 Jadwal Eksekusi 24/5 Pasar Forex (OANDA API v20)
+    # Dijalankan setiap jam pada menit ke-1 dari Senin hingga Jumat (UTC)
+    # Menyesuaikan jam buka pasar Sydney/Tokyo/London/New York & penutupan candle H1
+    - cron: '1 * * * 1-5'
+
+  # 🎛️ Manual Trigger (Workflow Dispatch)
+  workflow_dispatch:
+    inputs:
+      execution_target:
+        description: 'Pilih Mode Target Eksekusi'
+        required: true
+        default: 'scheduled-cycle'
+        type: choice
+        options:
+          - scheduled-cycle    # Eksekusi 1 siklus otonom (--once)
+          - health-check       # Validasi otentikasi & rekonsiliasi remote state
+      log_level:
+        description: 'Tingkat Detail Logging'
+        required: false
+        default: 'INFO'
+        type: choice
+        options:
+          - INFO
+          - DEBUG
+          - WARNING
+          - ERROR
+
+# 🔒 Mencegah eksekusi ganda yang saling berbenturan (Distributed Concurrency Guard)
+concurrency:
+  group: fxp-engine-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  run-trading-pipeline:
+    name: Execute FXP Autonomous Pipeline & Persist State
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      # ------------------------------------------------------------------
+      # STEP 1: Checkout Repository Kode Utama
+      # ------------------------------------------------------------------
+      - name: 1. Checkout Codebase
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+
+      # ------------------------------------------------------------------
+      # STEP 2: Setup Lingkungan Python Terisolasi
+      # ------------------------------------------------------------------
+      - name: 2. Setup Isolated Python Environment
+        uses: actions/setup-python@0a5c61591373683505ea898e09a3ea4f39ef2b9c # v5.0.0
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      # ------------------------------------------------------------------
+      # STEP 3: Instalasi Pustaka Dependensi (Polars, Scipy, oandapyV20, dll)
+      # ------------------------------------------------------------------
+      - name: 3. Install High-Performance Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then 
+            pip install --no-cache-dir -r requirements.txt
+          fi
+
+      # ------------------------------------------------------------------
+      # STEP 4: Eksekusi Engine Trading Otonom (OANDA REST API v20)
+      # ------------------------------------------------------------------
+      - name: 4. Run FXP Autonomous Forex Engine
+        env:
+          # Variable Autentikasi & Config OANDA REST API v20
+          OANDA_API_URL: ${{ secrets.OANDA_API_URL }}
+          OANDA_API_TOKEN: ${{ secrets.OANDA_API_TOKEN }}
+          OANDA_ACCOUNT_ID: ${{ secrets.OANDA_ACCOUNT_ID }}
+          
+          # Variable Notifikasi Telegram
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          
+          # Runtime Control & State Locking
+          GITHUB_ACTIONS: "true"
+          LOG_LEVEL: ${{ inputs.log_level || 'INFO' }}
+          FXP_LOCK_FILE: "/tmp/fxp.lock"
+          TZ: "Asia/Jakarta"
+        run: |
+          TARGET="${{ inputs.execution_target || 'scheduled-cycle' }}"
+          echo "🚀 Menjalankan FXP Forex Trading Engine v4.6.0 | Target: [$TARGET]..."
+          
+          if [ "$TARGET" = "health-check" ]; then
+            python -u -c "from main import FXPAutonomousOrchestrator, RuntimeMode; orch = FXPAutonomousOrchestrator(runtime=RuntimeMode.SCHEDULED); orch.setup_and_validate(); print('✅ Health Check & Remote Reconciliation OK')"
+          else
+            python -u main.py --once
+          fi
+
+      # ------------------------------------------------------------------
+      # STEP 5: Persistensi State, Snapshot Remote & History Logs
+      # ------------------------------------------------------------------
+      - name: 5. Auto-Commit & Persist System States
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          echo "🔍 Memeriksa status perubahan berkas fisik..."
+          git status --short
+          
+          git add -A
+          
+          if ! git diff --staged --quiet; then
+            echo "📦 Memulai commit perubahan state..."
+            git commit -m "auto(fxp): update system state, remote snapshot & trade audit logs [skip ci]"
+            
+            pushed=0
+            for i in {1..5}; do
+              echo "🔄 Git Push / Rebase (Percobaan $i/5)..."
+              if git pull --rebase -X ours origin main && git push; then
+                pushed=1
+                echo "✅ Persistensi data berhasil disimpan ke repository!"
+                break
+              fi
+              echo "⚠️ Rebase/Push gagal. Mengulang kembali dalam 5 detik..."
+              git rebase --abort || true
+              sleep 5
+            done
+            
+            if [ $pushed -eq 0 ]; then
+              echo "❌ Gagal mengunggah state bot setelah 5 kali percobaan."
+              exit 1
+            fi
+          else
+            echo "ℹ️ Tidak ada perubahan state baru untuk di-commit."
+          fi
