@@ -5,7 +5,7 @@ on:
     # 🕒 Jadwal Eksekusi 24/5 Pasar Forex (OANDA API v20)
     # Dijalankan setiap jam pada menit ke-1 dari Senin hingga Jumat (UTC)
     # Menyesuaikan jam buka pasar Sydney/Tokyo/London/New York & penutupan candle H1
-    - cron: '1 * * * 1-5'
+    - cron: 
 
   # 🎛️ Manual Trigger (Workflow Dispatch)
   workflow_dispatch:
